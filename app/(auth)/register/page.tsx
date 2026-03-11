@@ -42,21 +42,29 @@ export default function RegisterPage() {
     return Object.keys(newErrors).length === 0
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!validate()) return
 
     setIsSubmitting(true)
-    setTimeout(() => {
-      const result = register(name, email, password)
+    setErrors({}) // Limpiamos errores previos
+
+    try {
+      // LLAMADA ASÍNCRONA: Esperamos la respuesta real del backend
+      const result = await register(name, email, password)
+
       if (result.success) {
-        toast.success("Cuenta creada exitosamente. Inicia sesion.")
+        toast.success("Cuenta creada exitosamente. Inicia sesión.")
         router.push("/login")
       } else {
+        // Capturamos el error 401/409 del backend (ej: "El email ya está registrado")
         setErrors({ general: result.error ?? "Error al registrar" })
       }
+    } catch (error) {
+      setErrors({ general: "Error de conexión con el servidor" })
+    } finally {
       setIsSubmitting(false)
-    }, 500)
+    }
   }
 
   function clearError(field: string) {

@@ -31,20 +31,29 @@ export default function LoginPage() {
     return Object.keys(newErrors).length === 0
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!validate()) return
 
     setIsSubmitting(true)
-    setTimeout(() => {
-      const result = login(email, password)
+    setErrors({}) // Limpiar errores previos
+
+    try {
+      // LLAMADA REAL AL BACKEND: Esperamos la promesa del AuthContext
+      const result = await login(email, password)
+
       if (result.success) {
+        // Redirección inmediata al Dashboard tras validación en PostgreSQL
         router.push("/dashboard")
       } else {
+        // El error viene directamente desde NestJS (ej: "Credenciales inválidas")
         setErrors({ general: result.error })
       }
+    } catch (err) {
+      setErrors({ general: "Error inesperado en la comunicación con el servidor" })
+    } finally {
       setIsSubmitting(false)
-    }, 500)
+    }
   }
 
   return (

@@ -1,27 +1,40 @@
-"use client"
+'use client'
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react"
-import { defaultUsers, type User } from "@/data/mock-data"
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback
+} from 'react'
+import { defaultUsers, type User } from '@/data/mock-data'
 
 interface AuthContextType {
   user: User | null
   isAuthenticated: boolean
-  login: (email: string, password: string) => { success: boolean; error?: string }
-  register: (name: string, email: string, password: string) => { success: boolean; error?: string }
+  login: (
+    email: string,
+    password: string
+  ) => Promise<{ success: boolean; error?: string }>
+  register: (
+    name: string,
+    email: string,
+    password: string
+  ) => { success: boolean; error?: string }
   logout: () => void
   isLoading: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider ({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [users, setUsers] = useState<User[]>(defaultUsers)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("productcatalog_user")
-    const storedUsers = localStorage.getItem("productcatalog_users")
+    const storedUser = localStorage.getItem('productcatalog_user')
+    const storedUsers = localStorage.getItem('productcatalog_users')
     if (storedUsers) {
       setUsers(JSON.parse(storedUsers))
     }
@@ -31,44 +44,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false)
   }, [])
 
-  const login = useCallback(
-    (email: string, password: string) => {
-      const foundUser = users.find(
-        (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-      )
-      if (foundUser) {
-        setUser(foundUser)
-        localStorage.setItem("productcatalog_user", JSON.stringify(foundUser))
-        return { success: true }
+  const login = useCallback(async (email: string, password: string) => {
+    try {
+      const response = await fetch('http://localhost:3001/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.message || 'Credenciales incorrectas'
+        }
       }
-      return { success: false, error: "Credenciales incorrectas. Verifica tu email y contrasena." }
-    },
-    [users]
-  )
+
+      setUser(data)
+      localStorage.setItem('productcatalog_user', JSON.stringify(data))
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: 'Error de conexión con el servidor' }
+    }
+  }, [])
 
   const register = useCallback(
-    (name: string, email: string, password: string) => {
-      const exists = users.find((u) => u.email.toLowerCase() === email.toLowerCase())
-      if (exists) {
-        return { success: false, error: "Este email ya esta registrado." }
+    async (name: string, email: string, password: string) => {
+      try {
+        const response = await fetch('http://localhost:3001/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password })
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          // Si el backend tira 401 o 409, entramos aquí
+          return {
+            success: false,
+            error: data.message || 'Error en el registro'
+          }
+        }
+
+        // ÉXITO: El usuario ya está en Postgres
+        setUser(data)
+        localStorage.setItem('productcatalog_user', JSON.stringify(data))
+        return { success: true }
+      } catch (_error) {
+        return { success: false, error: 'Error de red o conexión bloqueada' }
       }
-      const newUser: User = {
-        id: `user-${Date.now()}`,
-        name,
-        email,
-        password,
-      }
-      const updatedUsers = [...users, newUser]
-      setUsers(updatedUsers)
-      localStorage.setItem("productcatalog_users", JSON.stringify(updatedUsers))
-      return { success: true }
     },
-    [users]
+    []
   )
 
   const logout = useCallback(() => {
     setUser(null)
-    localStorage.removeItem("productcatalog_user")
+    localStorage.removeItem('productcatalog_user')
   }, [])
 
   return (
@@ -79,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
-        isLoading,
+        isLoading
       }}
     >
       {children}
@@ -87,10 +120,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function useAuth() {
+export function useAuth () {
   const context = useContext(AuthContext)
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider")
+    throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
 }
