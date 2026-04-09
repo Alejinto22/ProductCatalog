@@ -1,87 +1,135 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react"
-import {
-  defaultCategories,
-  defaultProducts,
-  type Category,
-  type Product,
-} from "@/data/mock-data"
+import { type Category, type Product } from "@/data/mock-data"
+import { toast } from "sonner"
+
+const API_URL = "http://localhost:3001"; // DIRECCIÓN DE TU NESTJS
 
 interface DataContextType {
   categories: Category[]
   products: Product[]
-  addCategory: (category: Omit<Category, "id" | "updatedAt">) => void
-  updateCategory: (id: string, data: Partial<Category>) => void
-  deleteCategory: (id: string) => void
-  addProduct: (product: Omit<Product, "id" | "createdAt">) => void
-  updateProduct: (id: string, data: Partial<Product>) => void
-  deleteProduct: (id: string) => void
+  isLoading: boolean
+  addCategory: (category: Omit<Category, "id" | "updatedAt">) => Promise<void>
+  addProduct: (product: Omit<Product, "id" | "createdAt">) => Promise<void>
+  updateProduct: (id: string, data: Partial<Product>) => Promise<void>
+  deleteProduct: (id: string) => Promise<void>
   getCategoryName: (id: string) => string
+  refreshData: () => Promise<void>
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined)
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [categories, setCategories] = useState<Category[]>(defaultCategories)
-  const [products, setProducts] = useState<Product[]>(defaultProducts)
+  const [categories, setCategories] = useState<Category[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    const storedCategories = localStorage.getItem("productcatalog_categories")
-    const storedProducts = localStorage.getItem("productcatalog_products")
-    if (storedCategories) setCategories(JSON.parse(storedCategories))
-    if (storedProducts) setProducts(JSON.parse(storedProducts))
-  }, [])
+  // Función para sincronizar todo desde el Back
+  const refreshData = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const [resProd, resCat] = await Promise.all([
+        fetch(`${API_URL}/products`),
+        fetch(`${API_URL}/categories`) // Asegúrate de tener este GET en el back
+      ])
 
-  useEffect(() => {
-    localStorage.setItem("productcatalog_categories", JSON.stringify(categories))
-  }, [categories])
-
-  useEffect(() => {
-    localStorage.setItem("productcatalog_products", JSON.stringify(products))
-  }, [products])
-
-  const addCategory = useCallback((category: Omit<Category, "id" | "updatedAt">) => {
-    const newCategory: Category = {
-      ...category,
-      id: `cat-${Date.now()}`,
-      updatedAt: new Date().toISOString(),
+      if (resProd.ok) {
+        const data = await resProd.json()
+        setProducts(data)
+      }
+      
+      if (resCat.ok) {
+        const data = await resCat.json()
+        setCategories(data)
+      }
+    } catch (error) {
+      toast.error("No se pudo conectar con el servidor")
+      console.error("Fetch error:", error)
+    } finally {
+      setIsLoading(false)
     }
-    setCategories((prev) => [...prev, newCategory])
   }, [])
 
-  const updateCategory = useCallback((id: string, data: Partial<Category>) => {
-    setCategories((prev) =>
-      prev.map((c) =>
-        c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c
-      )
-    )
-  }, [])
+  useEffect(() => {
+    refreshData()
+  }, [refreshData])
 
-  const deleteCategory = useCallback((id: string) => {
-    setCategories((prev) => prev.filter((c) => c.id !== id))
-  }, [])
+  // CREAR PRODUCTO (POST)
+  const addProduct = useCallback(async (productData: Omit<Product, "id" | "createdAt">) => {
+    try {
+      const response = await fetch(`${API_URL}/products`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productData),
+      })
 
-  const addProduct = useCallback((product: Omit<Product, "id" | "createdAt">) => {
-    const newProduct: Product = {
-      ...product,
-      id: `prod-${Date.now()}`,
-      createdAt: new Date().toISOString(),
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || "Error al crear producto")
+      }
+
+      const newProduct = await response.json()
+      setProducts((prev) => [...prev, newProduct])
+      toast.success("Producto guardado en base de datos")
+    } catch (error: any) {
+      toast.error(error.message)
+      throw error
     }
-    setProducts((prev) => [...prev, newProduct])
   }, [])
 
-  const updateProduct = useCallback((id: string, data: Partial<Product>) => {
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...data } : p)))
+  // ACTUALIZAR PRODUCTO (PATCH)
+  const updateProduct = useCallback(async (id: string, data: Partial<Product>) => {
+    try {
+      const response = await fetch(`${API_URL}/products/${id}`, {
+        method: 'PATCH', // O PUT según tu @Patch() en NestJS
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+
+      if (!response.ok) throw new Error("Error al actualizar")
+
+      const updated = await response.json()
+      setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)))
+    } catch (error) {
+      toast.error("Error al actualizar producto")
+    }
   }, [])
 
-  const deleteProduct = useCallback((id: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id))
+  // ELIMINAR PRODUCTO (DELETE)
+  const deleteProduct = useCallback(async (id: string) => {
+    try {
+      const response = await fetch(`${API_URL}/products/${id}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        setProducts((prev) => prev.filter((p) => p.id !== id))
+      } else {
+        throw new Error()
+      }
+    } catch (error) {
+      toast.error("No se pudo eliminar el producto del servidor")
+    }
   }, [])
+
+  // CATEGORÍAS (Ejemplo simple de add)
+  const addCategory = useCallback(async (category: Omit<Category, "id" | "updatedAt">) => {
+    try {
+      const res = await fetch(`${API_URL}/categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(category),
+      })
+      if (res.ok) refreshData()
+    } catch (error) {
+      console.error(error)
+    }
+  }, [refreshData])
 
   const getCategoryName = useCallback(
     (id: string) => {
-      const cat = categories.find((c) => c.id === id)
+      const cat = categories.find((c) => c.id === id || String(c.id) === String(id))
       return cat?.name ?? "Sin categoria"
     },
     [categories]
@@ -92,13 +140,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       value={{
         categories,
         products,
+        isLoading,
         addCategory,
-        updateCategory,
-        deleteCategory,
         addProduct,
         updateProduct,
         deleteProduct,
         getCategoryName,
+        refreshData,
       }}
     >
       {children}
@@ -108,8 +156,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
 export function useData() {
   const context = useContext(DataContext)
-  if (context === undefined) {
-    throw new Error("useData must be used within a DataProvider")
-  }
+  if (context === undefined) throw new Error("useData must be used within a DataProvider")
   return context
 }
