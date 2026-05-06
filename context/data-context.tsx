@@ -16,7 +16,9 @@ interface DataContextType {
   categories: Category[]
   products: Product[]
   isLoading: boolean
-  addCategory: (category: Omit<Category, 'id' | 'updatedAt'>) => Promise<void>
+  updateCategory: (id: string, data: Partial<Category>) => Promise<void>
+  deleteCategory: (id: string) => Promise<void>;
+  addCategory: (category: Omit<Category, "id" | "updatedAt">) => Promise<void>
   addProduct: (product: Omit<Product, 'id' | 'createdAt'>) => Promise<void>
   updateProduct: (id: string, data: Partial<Product>) => Promise<void>
   deleteProduct: (id: string) => Promise<void>
@@ -130,21 +132,43 @@ export function DataProvider ({ children }: { children: React.ReactNode }) {
   }, [])
 
   // CATEGORÍAS (Ejemplo simple de add)
-  const addCategory = useCallback(
-    async (category: Omit<Category, 'id' | 'updatedAt'>) => {
-      try {
-        const res = await fetch(`${API_URL}/categories`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(category)
-        })
-        if (res.ok) refreshData()
-      } catch (error) {
-        console.error(error)
+  const addCategory = useCallback(async (category: Omit<Category, "id" | "updatedAt">) => {
+    const res = await fetch(`${API_URL}/categories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(category),
+    })
+    if (!res.ok) throw new Error("Error al crear categoría")
+    await refreshData()
+  }, [refreshData])
+
+  // ACTUALIZAR CATEGORÍA
+  const updateCategory = useCallback(async (id: string, data: Partial<Category>) => {
+    const res = await fetch(`${API_URL}/categories/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw new Error("Error al actualizar categoría")
+    await refreshData()
+  }, [refreshData])
+
+  // ELIMINAR CATEGORÍA
+  const deleteCategory = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`${API_URL}/categories/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        await refreshData()
+        toast.success("Categoría eliminada")
+      } else {
+        const error = await res.json()
+        // Aquí capturamos el mensaje de "tiene productos asociados" del backend
+        toast.error(error.message || "No se pudo eliminar")
       }
-    },
-    [refreshData]
-  )
+    } catch (error) {
+      toast.error("Error de conexión con el servidor")
+    }
+  }, [refreshData])
 
   const getCategoryName = useCallback(
     (id: string) => {
@@ -164,6 +188,8 @@ export function DataProvider ({ children }: { children: React.ReactNode }) {
         isLoading,
         addCategory,
         addProduct,
+        updateCategory,
+        deleteCategory,
         updateProduct,
         deleteProduct,
         getCategoryName,
